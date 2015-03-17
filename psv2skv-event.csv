@@ -1,0 +1,22 @@
+EventId;Description;OsVersion;IsActive
+528;Succesfull logon;2003;TRUE
+529;Logon failure - Unknown user name or bad password;2003;TRUE
+531;Logon Failure - Account logon time restriction violation;2003;TRUE
+537;Logon failure - The logon attempt failed for other reasons;2003;TRUE
+627;User changed his own password;2003;TRUE
+628;Privileged user changed a users password;2003;TRUE
+644;Locked out account;2003;TRUE
+671;Unlocked;2003;TRUE
+675;Kerberos pre-authentication failed;2003;TRUE
+680;Account Used for Logon by;2003;TRUE
+681;The logon to account: %2 by: %1 from workstation: %3 failed.;2003;FALSE
+685;Account Name Changed;2003;TRUE
+4720;An account is created;2008;TRUE
+4723;User password change attempt;2008;TRUE
+4724;Privileged user changed a password;2008;TRUE
+4728;Added a member to a Security Global Group;2008;TRUE
+4729;Removed a member from a Security Global Group;2008;TRUE
+4740;Locked out account;2008;TRUE
+4767;Unlocked;2008;TRUE
+4776;The domain controller attempted to validate the credentials for an account;2008;TRUE
+4771;Kerberos pre-authentication failed;2008;TRUE
