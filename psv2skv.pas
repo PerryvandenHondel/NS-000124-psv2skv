@@ -7,8 +7,11 @@
 		Convert a PSV (Pipe Separated Values) output text file to an Splunk Key-Value text file to be indexed
   
 	VERSION:
+		06	2015-03-20	PVDH	Modifications:
+								1) Clean-up code.
 		05	2015-03-16	PVDH	Modifications:
-								1) Renamed the standard event_id key to evtid
+								1) Renamed the standard event_id key to eid
+								2) Use an event definition (.evtd) per event to process. Eliminate the TRUE option per event.
 		04	2015-03-11	PVDH	Modifications:
 								1) Do not process computer accounts in account field to reduce log size.
 								   Changed in function ConvertFile()
@@ -16,12 +19,38 @@
 		02	2015-03-03	PVDH	Modifications
 		01	2014-10-29	PVDH	Initial version
 
-	RETURNS
+	RETURNS:
 		RESULT_OK			0   OK, see 'output.skv'
 		RESULT_ERR_CONV		1   No conversion done
 		RESULT_ERR_INPUT	2   Input PSV file not found
 		RESULT_ERR_CONF_E	3	Error in config file Event
 		RESULT_ERR_CONF_ED	4	Error in config file EventDetail
+		
+	FUNCTIONS AND PROCEDURES:
+		function ConvertFile
+		function GetEventType
+		function GetKeyName
+		function GetKeyType
+		function ProcessThisEvent
+		procedure EventDetailReadConfig
+		procedure EventDetailRecordAdd
+		procedure EventDetailRecordShow
+		procedure EventFoundAdd
+		procedure EventFoundStats
+		procedure EventIncreaseCount
+		procedure EventReadConfig
+		procedure EventRecordAdd
+		procedure EventRecordShow
+		procedure ProcessEvent
+		procedure ProcessLine
+		procedure ProgramDone
+		procedure ProgramInit
+		procedure ProgramRun
+		procedure ProgramTest
+		procedure ProgramTitle
+		procedure ProgramUsage
+		procedure ShowStatistics
+		
 	
  =====================================================================================================================} 
 
@@ -35,6 +64,7 @@ program psv2skv;
 
 uses
 	Classes, 
+	StrUtils,
 	Sysutils,
 	UTextFile,
 	USplunkFile,
@@ -43,7 +73,7 @@ uses
 	
 const
 	ID 					=	'000124';
-	VERSION 			=	'04';
+	VERSION 			=	'06';
 	DESCRIPTION 		=	'Convert PSV (Pipe Separated Values) Event Log to SKV (Splunk Key-Values) format, based on config settings';
 	RESULT_OK			=	0;
 	RESULT_ERR_CONV		=	1;
@@ -52,7 +82,7 @@ const
 	RESULT_ERR_CONF_ED	=	4;
 	SEPARATOR_PSV		=	'|';	
 	SEPARATOR_CSV		=	';';
-	STEP_MOD			=	37;		// Step modulator for echo mod, use a off-number, not rounded as 10, 15 etc. to see the changes.
+	STEP_MOD			=	137;		// Step modulator for echo mod, use a off-number, not rounded as 10, 15 etc. to see the changes.
 	
 	
 type
@@ -62,7 +92,6 @@ type
 		description: string;
 		count: integer;
 		osVersion: word;
-		isActive: boolean;			//	Is this an active event to process? True=Process/False=Do not process
 	end;
 	TEventArray = array of TEventRecord;
 
@@ -71,9 +100,8 @@ type
 		keyName: string;            // Key name under Splunk
 		position: word;       	   	// Position in the Logparser string
 		isString: boolean;          // Save value as string (True=String, False=number)
-		isActive: boolean;       	// Process this position (True=process, False=Do not process)
-		convertAction: string;		// If the read value needs conversion, mention it in this field.
 	end;
+		
     TEventDetailArray = array of TEventDetailRecord;
 	
 	TEventFoundRecord = record
@@ -94,6 +122,7 @@ var
 	tfPsv: CTextFile;
 	tfSkv: CTextFile;
 	
+
 	
 function ProcessThisEvent(e: integer): boolean;
 {
@@ -117,10 +146,12 @@ begin
 		//WriteLn(i, chr(9), EventArray[i].eventId, Chr(9), EventArray[i].isActive);
 		if EventArray[i].eventId = e then
 		begin
+			r := true;
+			break;
 			//WriteLn('FOUND ', e, ' ON POS ', i);
 			// Found the event e in the array, return the isActive state
-			r := EventArray[i].isActive;
-			break;
+			//r := EventArray[i].isActive;
+			//break;
 		end;
 	end;
 	//WriteLn('ShouldEventBeProcessed():', Chr(9), e, Chr(9), r);
@@ -146,11 +177,11 @@ begin
 			//WriteLn(Chr(9), IntToStr(EventDetailArray[i].position));
 			if position = EventDetailArray[i].position then
 			begin
-				if EventDetailArray[i].isActive = true then
-				begin
+				r := EventDetailArray[i].keyName;
+				//if EventDetailArray[i].isActive = true then
+				//begin
 					//WriteLn('FOUND FOR EVENTID ', eventId, ' AND ACTIVE KEYNAME ON POSITION ', position);
-					r := EventDetailArray[i].keyName;
-				end;
+				//end;
 			end;
 		end;
 	end;
@@ -207,13 +238,13 @@ begin
 		begin
 			//WriteLn(Chr(9), IntToStr(EventDetailArray[i].position));
 			if position = EventDetailArray[i].position then
-			begin
-				if EventDetailArray[i].isActive = true then
-				begin
+				r := EventDetailArray[i].isString;
+			//begin
+				//if EventDetailArray[i].isActive = true then
+				//begin
 					//WriteLn('FOUND FOR EVENTID ', eventId, ' AND ACTIVE KEYNAME ON POSITION ', position);
-					r := EventDetailArray[i].isString;
-				end;
-			end;
+				//end;
+			//end;
 		end;
 	end;
 	GetKeyType := r;
@@ -292,7 +323,7 @@ begin
 	
 	WriteLn;
 	
-	WaitSecs(5);
+	//WaitSecs(5);
 	
 end; // of procedure ShowStatistics
 	
@@ -305,6 +336,8 @@ var
 	s: string;
 	buffer: AnsiString;
 begin
+	//WriteLn;
+	//WriteLn('ProcessEvent(): ', eventId, Chr(9));
 	buffer := la[0] + ' ' + GetEventType(StrToInt(la[5])) + ' eid=' + IntToStr(eventId) + ' ';
 	
 	for x := 0 to High(la) do
@@ -348,29 +381,30 @@ begin
 		//WriteLn(lineCount, Chr(9), l);
 		// Set the lienArray on 0 (Clear it)
 		SetLength(lineArray, 0);
+		
 		// Split the line into the lineArray
 		lineArray := SplitString(l, SEPARATOR_PSV);
 		
 		// Obtain the eventId from the lineArray on position 4.
-		
-		eventId := StrToInt(lineArray[4]);
+		eventId := StrToInt(lineArray[4]);	// The Event Id is always found at the 4th position
 		//Writeln(lineCount, Chr(9), l);
 		//WriteLn(Chr(9), eventId);
 		
 		if ProcessThisEvent(eventId) then
-		begin
-			//WriteLn(lineCount, ' >>>>> EVENT FOUND TO BE CONVERTED: ', eventId);
 			ProcessEvent(eventId, lineArray);
+		
+		
+		//begin
+			//WriteLn(lineCount, ' >>>>> EVENT FOUND TO BE CONVERTED: ', eventId);
 			//WriteMod(lineCount, 37); // In USupport Library
 			
-		end; // if ProcessThisEvent(eventId) then
+		//end; // if ProcessThisEvent(eventId) then
 		
-		{
-		for x := 0 to Length(lineArray) do
-		begin
-			WriteLn(Chr(9), x, ':', Chr(9), lineArray[x]);
-		end;		
-		}
+		//for x := 0 to Length(lineArray) do
+		//begin
+		//	WriteLn(Chr(9), x, ':', Chr(9), lineArray[x]);
+		//end;		
+		
 		SetLength(lineArray, 0);
 	end; // if Length(l) > 0 then
 	
@@ -384,7 +418,7 @@ var
 	pathSplunk: string;
 	strLine: AnsiString;			// Buffer for the read line
 	intCurrentLine: integer;		// Line counter
-	n: integer;
+	//n: integer;
 begin
 	// Build the path for the SKV (Splunk) file.
 	pathSplunk := StringReplace(pathInput, ExtractFileExt(pathInput), '.skv', [rfReplaceAll, rfIgnoreCase]);
@@ -409,10 +443,10 @@ begin
 		intCurrentLine := tfPsv.GetCurrentLine();
 		//WriteLn(intCurrentLine, Chr(9), strLine);
 		
-		n := Pos('$|', strLine);	// V04: Check for a computer name (COMPUTERNAME$) in the line (check for $|)
-		if n = 0 Then
+		//n := Pos('$|', strLine);	// V04: Check for a computer name (COMPUTERNAME$) in the line (check for $|)
+		//if n = 0 Then
 			// V04: Only process the lines with no COMPUTERNAME$ in the line.
-			ProcessLine(intCurrentLine, strLine);
+		ProcessLine(intCurrentLine, strLine);
 			
 		WriteMod(intCurrentLine, STEP_MOD); // In USupport Library
 	until tfPsv.GetEof();
@@ -427,7 +461,8 @@ end; // of function ConvertFile
 	
 	
 	
-procedure EventRecordAdd(newEventId: word; newDescription: string; newOsVersion: word; newIsActive: boolean);
+//procedure EventRecordAdd(newEventId: word; newDescription: string; newOsVersion: word; newIsActive: boolean); V05
+procedure EventRecordAdd(newEventId: word; newDescription: string; newOsVersion: word); // V06
 {
 
 	EventId;Description;OsVersion;IsActive
@@ -451,7 +486,7 @@ begin
 	EventArray[size].osVersion := newOsVersion;
 	EventArray[size].description := newDescription;
 	EventArray[size].count := 0;
-	EventArray[size].isActive := newIsActive;
+	//EventArray[size].isActive := newIsActive;
 end; // of procedure EventRecordAdd
 
 
@@ -465,12 +500,13 @@ begin
 
 	for i := 0 to High(EventArray) do
 	begin
-		Writeln(IntToStr(i) + Chr(9) + ' ' + IntToStr(EventArray[i].eventId) + Chr(9), EventArray[i].isActive, Chr(9) + IntToStr(EventArray[i].osVersion) + Chr(9) + EventArray[i].description);
+		//Writeln(IntToStr(i) + Chr(9) + ' ' + IntToStr(EventArray[i].eventId) + Chr(9), EventArray[i].isActive, Chr(9) + IntToStr(EventArray[i].osVersion) + Chr(9) + EventArray[i].description);
+		Writeln(IntToStr(i) + Chr(9) + ' ' + IntToStr(EventArray[i].eventId) + Chr(9) + IntToStr(EventArray[i].osVersion) + Chr(9) + EventArray[i].description);
 	end;
 end; // of procedure EventRecordShow
 
 
-
+{
 procedure EventReadConfig();
 var
 	pathEvent: string;
@@ -508,10 +544,11 @@ begin
 		Halt(RESULT_ERR_CONF_E);
 	end; // if FileExists
 end; // of procedure EventReadConfig()
+}
 
 
-
-procedure EventDetailRecordAdd(newEventId: integer; newKeyName: string; newPostion: integer; newIsString: boolean; newIsActive: boolean; newConvertAction: string);
+//procedure EventDetailRecordAdd(newEventId: integer; newKeyName: string; newPostion: integer; newIsString: boolean; newIsActive: boolean; newConvertAction: string); //V05
+procedure EventDetailRecordAdd(newEventId: integer; newKeyName: string; newPostion: integer; newIsString: boolean); // V06
 {
 		
 	EventId;KeyName;Position;IsString;IsActive
@@ -537,8 +574,8 @@ begin
 	EventDetailArray[size].keyName := newKeyName;
 	EventDetailArray[size].position := newPostion;
 	EventDetailArray[size].isString := newIsString;
-	EventDetailArray[size].isActive := newIsActive;
-	EventDetailArray[size].convertAction := newConvertAction;
+	//EventDetailArray[size].isActive := newIsActive;
+	//EventDetailArray[size].convertAction := newConvertAction;
 	
 end; // of procedure EventDetailRecordAdd
 
@@ -551,17 +588,17 @@ begin
 	WriteLn();
 	WriteLn('EVENTDETAILARRAY:');
 
-	WriteLn('#', Chr(9), 'event', Chr(9), 'pos', Chr(9), 'isStr', Chr(9), 'isAct', Chr(9), 'keyName');
+	WriteLn('#', Chr(9), 'event', Chr(9), 'pos', Chr(9), 'isStr', Chr(9), 'keyName');
 	
 	for i := 0 to High(EventDetailArray) do
 	begin
 		//WriteLn('record: ' + IntToStr(i));
-		Writeln(IntToStr(i), Chr(9), IntToStr(EventDetailArray[i].eventId), Chr(9), IntToStr(EventDetailArray[i].position), Chr(9), EventDetailArray[i].isString, Chr(9), EventDetailArray[i].isActive, Chr(9), EventDetailArray[i].keyName, ' (Convert=',  EventDetailArray[i].convertAction, ')');
+		Writeln(IntToStr(i), Chr(9), IntToStr(EventDetailArray[i].eventId), Chr(9), IntToStr(EventDetailArray[i].position), Chr(9), EventDetailArray[i].isString, Chr(9), EventDetailArray[i].keyName);
 	end;
 end; // of procedure EventRecordShow
 
 
-
+{
 procedure EventDetailReadConfig();
 var
 	pathEvent: string;
@@ -605,6 +642,95 @@ begin
 		Halt(0);
 	end; // if FileExists
 end; // of procedure ReadConfigEvent()
+}
+
+
+procedure ReadEventDefinitionFile(p : string);
+var
+	//strEvent: string;
+	//intEvent: integer;
+	//strFilename: string;
+	tf: CTextFile; 		// Text File
+	l: string;			// Line Buffer
+	x: integer;			// Line Counter
+	a: TStringArray;	// Array
+begin
+	//WriteLn('ReadEventDefinitionFile: ==> ', p);
+	
+	//WriteLn(ExtractFileName(p)); // Get the file name with the extension.
+	
+	// Get the file name from the path p.
+	//strFilename := ExtractFileName(p);
+	
+	//WriteLn(ExtractFileExt(p));
+	// Get the event id from the file name by removing the extension from the file name.
+	//strEvent := ReplaceText(strFilename, ExtractFileExt(p), '');
+	
+	//WriteLn(strEvent);
+	// Convert the string with Event ID to a integer.
+	//intEvent := StrToInt(strEvent);
+	//WriteLn(intEvent);
+	
+	
+	
+	//WriteLn('CONTENTS OF ', p);
+	tf := CTextFile.Create(p);
+	tf.OpenFileRead();
+	repeat
+		l := tf.ReadFromFile();
+		If Length(l) > 0 Then
+		begin
+			//WriteLn(l);
+			x := tf.GetCurrentLine();
+			a := SplitString(l, SEPARATOR_CSV);
+			if x = 1 then
+			begin
+				//WriteLn('FIRST LINE!');
+				//WriteLn(Chr(9), l);
+				//EventRecordAdd(StrToInt(a[0]), a[1], StrToInt(a[2]), StrToBool(a[3])); // V05
+				EventRecordAdd(StrToInt(a[0]), a[1], StrToInt(a[2])); // V06
+			end
+			else
+			begin
+				//WriteLn('BIGGER > 1');
+				//WriteLn(Chr(9), l);
+				//EventDetailRecordAdd(StrToInt(a[0]), a[1], StrToInt(a[2]), StrToBool(a[3]), StrToBool(a[4]), a[5]); // V05
+				EventDetailRecordAdd(StrToInt(a[0]), a[1], StrToInt(a[2]), StrToBool(a[3])); // V06
+			end;
+			//WriteLn(x, Chr(9), l);
+		end;
+	until tf.GetEof();
+	tf.CloseFile();
+	
+	//WriteLn;
+end; // of procedure ReadEventDefinitionFile
+
+
+
+procedure ReadEventDefinitionFiles();
+var	
+	sr : TSearchRec;
+	count : Longint;
+begin
+	count:=0;
+	
+	SetLength(EventArray, 0);
+	SetLength(EventDetailArray, 0);
+	
+	
+	if FindFirst(GetProgramFolder() + '\*.evd', faAnyFile and faDirectory, sr) = 0 then
+    begin
+    repeat
+		Inc(count);
+		with sr do
+		begin
+			ReadEventDefinitionFile(GetProgramFolder() + '\' + name);
+        end;
+		until FindNext(sr) <> 0;
+    end;
+	FindClose(sr);
+	Writeln ('Found ', count, ' event definitions to process.');
+end; // of procedure ReadAllEventDefinitions
 
 	
 	
@@ -666,7 +792,6 @@ end; // of procedure ProgramTest()
 
 procedure ProgramInit();
 begin
-
 end; // of procedure ProgramInit()
 
 
@@ -689,10 +814,14 @@ begin
 		else
 		begin
 			//WriteLn('INFO: File ' + pathInput + ' found, start conversion');
-	 		EventReadConfig();
-			//EventRecordShow();
 			
-			EventDetailReadConfig();
+			// Read all event definition files in the array.
+			ReadEventDefinitionFiles();
+			
+	 		//EventReadConfig();
+			EventRecordShow();
+			
+			///EventDetailReadConfig();
 			//EventDetailRecordShow();
 			
 			programResult := ConvertFile(pathInput);
