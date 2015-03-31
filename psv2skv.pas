@@ -7,6 +7,8 @@
 		Convert a PSV (Pipe Separated Values) output text file to an Splunk Key-Value text file to be indexed
   
 	VERSION:
+		07	2015-03-31	PVDH	Modifications:
+								1) Write a log file with file processed and statistics
 		06	2015-03-20	PVDH	Modifications:
 								1) Clean-up code.
 		05	2015-03-16	PVDH	Modifications:
@@ -114,13 +116,12 @@ type
 var
 	pathInput: string;
 	programResult: integer;
-
 	EventDetailArray: TEventDetailArray;
 	EventArray: TEventArray;
 	EventFound: TEventFoundArray;
-	
 	tfPsv: CTextFile;
 	tfSkv: CTextFile;
+	tfLog: CTextFile;
 	
 
 	
@@ -307,24 +308,34 @@ begin
 	totalEvents := 0;
 	
 	WriteLn();
+	
 	WriteLn('STATISTICS:');
+	tfLog.WriteToFile('STATISTICS:');
+	
 	WriteLn();
+	tfLog.WriteToFile('');
+	
 	WriteLn('Evt', Chr(9), 'Number', Chr(9), 'Description');
+	tfLog.WriteToFile('Evt' + Chr(9) + 'Number' + Chr(9) + 'Description');
+	
 	WriteLn('----', Chr(9), '------', Chr(9), '--------------------------------------');
+	tfLog.WriteToFile('----' + Chr(9) + '------' + Chr(9) + '--------------------------------------');
 	
 	for i := 0 to High(EventArray) do
 	begin
 		//WriteLn('record: ' + IntToStr(i));
 		Writeln(EventArray[i].eventId:4, Chr(9), EventArray[i].count:6, Chr(9), EventArray[i].description, ' (', EventArray[i].osVersion, ')');
+		tfLog.WriteToFile(IntToStr(EventArray[i].eventId) + Chr(9) + IntToStr(EventArray[i].count) + Chr(9) + EventArray[i].description + ' (' + IntToStr(EventArray[i].osVersion) + ')');
+		
 		totalEvents := totalEvents + EventArray[i].count;
 	end;
 	WriteLn;
+	tfLog.WriteToFile('');
+	
 	WriteLn('Total of events ', totalEvents, ' converted.');
+	tfLog.WriteToFile('Total of events ' +  IntToStr(totalEvents) + ' converted.');
 	
 	WriteLn;
-	
-	//WaitSecs(5);
-	
 end; // of procedure ShowStatistics
 	
 
@@ -363,7 +374,7 @@ begin
 	
 	//WriteLn('LINE TO WRITE TO SKV: ' + buffer);
 	tfSkv.WriteToFile(buffer);
-end;
+end; // of function ProcessEvent
 	
 
 	
@@ -392,18 +403,6 @@ begin
 		
 		if ProcessThisEvent(eventId) then
 			ProcessEvent(eventId, lineArray);
-		
-		
-		//begin
-			//WriteLn(lineCount, ' >>>>> EVENT FOUND TO BE CONVERTED: ', eventId);
-			//WriteMod(lineCount, 37); // In USupport Library
-			
-		//end; // if ProcessThisEvent(eventId) then
-		
-		//for x := 0 to Length(lineArray) do
-		//begin
-		//	WriteLn(Chr(9), x, ':', Chr(9), lineArray[x]);
-		//end;		
 		
 		SetLength(lineArray, 0);
 	end; // if Length(l) > 0 then
@@ -506,48 +505,7 @@ begin
 end; // of procedure EventRecordShow
 
 
-{
-procedure EventReadConfig();
-var
-	pathEvent: string;
-	l: string;
-	a: TStringArray;
-	tfEvent: CTextFile; 
-begin
-	pathEvent := LowerCase(GetProgramName());
-	pathEvent := StringReplace(pathEvent, ExtractFileExt(pathEvent), '-event.csv', [rfReplaceAll, rfIgnoreCase]);
-	
-	//WriteLn('EventReadConfig()');
-	WriteLn('Reading event master from: ' + pathEvent);
-	
-	if FileExists(pathEvent) = true then
-	begin
-		//Writeln('Configuration file ', pathEvent, ' found');
-		
-		SetLength(eventArray, 0);
-		tfEvent := CTextFile.Create(pathEvent);
-		tfEvent.OpenFileRead();
-		repeat
-			l := tfEvent.ReadFromFile();
-			a := SplitString(l, SEPARATOR_CSV);
-			if (tfEvent.GetCurrentLine() > 1) then
-			begin
-				// EventId;Description;OsVersion;IsActive
-				EventRecordAdd(StrToInt(a[0]), a[1], StrToInt(a[2]), StrToBool(a[3]));
-			end
-		until tfEvent.GetEof();
-		tfEvent.CloseFile();
-	end
-	else
-	begin
-		WriteLn('WARNING: Configuration file ' + pathEvent + ' not found!');
-		Halt(RESULT_ERR_CONF_E);
-	end; // if FileExists
-end; // of procedure EventReadConfig()
-}
 
-
-//procedure EventDetailRecordAdd(newEventId: integer; newKeyName: string; newPostion: integer; newIsString: boolean; newIsActive: boolean; newConvertAction: string); //V05
 procedure EventDetailRecordAdd(newEventId: integer; newKeyName: string; newPostion: integer; newIsString: boolean); // V06
 {
 		
@@ -597,52 +555,6 @@ begin
 	end;
 end; // of procedure EventRecordShow
 
-
-{
-procedure EventDetailReadConfig();
-var
-	pathEvent: string;
-	l: string;
-	a: TStringArray;
-	tfEvent: CTextFile; 
-begin
-	pathEvent := LowerCase(GetProgramName());
-	pathEvent := StringReplace(pathEvent, ExtractFileExt(pathEvent), '-event-detail.csv', [rfReplaceAll, rfIgnoreCase]);
-	
-	//WriteLn('EventDetailReadConfig()');
-	WriteLn('Reading event detail from: ' + pathEvent);
-	
-	if FileExists(pathEvent) = true then
-	begin
-		//Writeln('Configuration file ', pathEvent, ' found');
-		
-		SetLength(EventDetailArray, 0);
-		tfEvent := CTextFile.Create(pathEvent);
-		tfEvent.OpenFileRead();
-		repeat
-			l := tfEvent.ReadFromFile();
-			if Length(l) > 0 then
-			begin
-				// Only process lines with data.
-				//WriteLn(Chr(9), l);
-				a := SplitString(l, SEPARATOR_CSV);
-				if (tfEvent.GetCurrentLine() > 1) then
-				begin
-					// Skip first header line, and read every next line.
-					// EventId;KeyName;Position;IsString;IsActive;ConvertAction
-					EventDetailRecordAdd(StrToInt(a[0]), a[1], StrToInt(a[2]), StrToBool(a[3]), StrToBool(a[4]), a[5]);
-				end;
-			end;
-		until tfEvent.GetEof();
-		tfEvent.CloseFile();
-	end
-	else
-	begin
-		WriteLn('WARNING: Configuration file ' + pathEvent + ' not found!');
-		Halt(0);
-	end; // if FileExists
-end; // of procedure ReadConfigEvent()
-}
 
 
 procedure ReadEventDefinitionFile(p : string);
@@ -716,7 +628,6 @@ begin
 	
 	SetLength(EventArray, 0);
 	SetLength(EventDetailArray, 0);
-	
 	
 	if FindFirst(GetProgramFolder() + '\*.evd', faAnyFile and faDirectory, sr) = 0 then
     begin
@@ -797,6 +708,8 @@ end; // of procedure ProgramInit()
 
 
 procedure ProgramRun();
+var
+	pathLog: string;
 begin
 	ProgramTitle();
 	
@@ -813,16 +726,27 @@ begin
 		end
 		else
 		begin
-			//WriteLn('INFO: File ' + pathInput + ' found, start conversion');
-			
 			// Read all event definition files in the array.
 			ReadEventDefinitionFiles();
 			
 	 		//EventReadConfig();
 			EventRecordShow();
 			
-			///EventDetailReadConfig();
-			//EventDetailRecordShow();
+			// V07: Open a log file to write processed file and statistics
+			pathLog := LeftStr(GetProgramPath(), Length(GetProgramPath()) - 4) + '.log';
+			WriteLn('pathLog: ' + pathLog);
+			
+			// Delete any existing Splunk file.
+			if FileExists(pathLog) = true then
+			begin
+				DeleteFile(pathLog);
+			end;
+			
+			tfLog := CTextFile.Create(pathLog);
+			tfLog.OpenFileWrite();
+			
+			tfLog.WriteToFile('Input: ' + pathInput);
+			tfLog.WriteToFile('');
 			
 			programResult := ConvertFile(pathInput);
 			if programResult <> 0 then
@@ -830,6 +754,10 @@ begin
 				programResult := RESULT_ERR_CONV;
 				WriteLn('WARNING: No conversion done.');
 			end;
+			
+			ShowStatistics();
+			
+			tfLog.CloseFile();
 		end
 	end
 	else
@@ -843,7 +771,7 @@ end; // of procedure ProgramRun()
 
 procedure ProgramDone();
 begin
-	ShowStatistics();
+	
 
 	WriteLn('Program halted (', programResult, ')');
 	Halt(programResult)	
