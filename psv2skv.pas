@@ -8,7 +8,10 @@
   
 	VERSION:
 		07	2015-03-31	PVDH	Modifications:
-								1) Write a log file with file processed and statistics
+								1)	Write a log file with file processed and statistics
+								2)	Add the parameter options for debug and help:
+									--debug, -d: debug on
+									--help, -h ,-?: Show usage.
 		06	2015-03-20	PVDH	Modifications:
 								1) Clean-up code.
 		05	2015-03-16	PVDH	Modifications:
@@ -75,8 +78,8 @@ uses
 	
 const
 	ID 					=	'000124';
-	VERSION 			=	'06';
-	DESCRIPTION 		=	'Convert PSV (Pipe Separated Values) Event Log to SKV (Splunk Key-Values) format, based on config settings';
+	VERSION 			=	'07';
+	DESCRIPTION 		=	'Convert PSV (Pipe Separated Values) Event Log to SKV (Splunk Key-Values) format, based on event definition files (.evd)';
 	RESULT_OK			=	0;
 	RESULT_ERR_CONV		=	1;
 	RESULT_ERR_INPUT	=	2;
@@ -122,6 +125,7 @@ var
 	tfPsv: CTextFile;
 	tfSkv: CTextFile;
 	tfLog: CTextFile;
+	blnDebug: boolean;
 	
 
 	
@@ -657,12 +661,18 @@ end; // of procedure ProgramTitle()
 
 
 procedure ProgramUsage();
+var
+	p:	string;
 begin
+	p := ParamStr(0);
+
+	WriteLn();
+	WriteLn('--debug, -d:             Debug on');
+	WriteLn('--help, -h, -?:          Show the help');
+	WriteLn('[psv file to convert]:   File to convert in Pipe Seperated Values (PSV) format');
 	WriteLn();
 	WriteLn('Usage:');
-	WriteLn(Chr(9) + ParamStr(0) + ' <full-path-to-infile.psv>');
-	WriteLn();
-	WriteLn('Creates a new converted text Splunk file (full-path-to-infile.psv >> full-path-to-infile.skv)');
+	WriteLn(p + ' [psv file to convert] [switches]');
 	WriteLn();
 end; // of procedure ProgramUsage()
 
@@ -702,7 +712,45 @@ end; // of procedure ProgramTest()
 
 
 procedure ProgramInit();
+var	
+	i: integer;
 begin
+	// Process the parameters
+	
+	//WriteLn('ProgramInit()');
+	//WriteLn('ParamCount: ', ParamCount);
+	
+	ProgramTitle();
+	
+	if ParamCount = 0 then
+	begin
+		ProgramUsage();
+		Halt(0);
+	end
+	else
+	begin
+		for i := 1 to ParamCount do
+		begin
+			//Writeln(i, ': ', ParamStr(i));
+			
+			case LowerCase(ParamStr(i)) of
+				'--debug', '-d':	
+					begin
+						blnDebug := true;
+						WriteLn('Debug is ON!');
+					end;
+				'--help', '-h', '-?':
+					begin
+						ProgramUsage();
+						Halt(0);
+					end;
+			else
+				pathInput := ParamStr(i)
+			end;
+		end; 
+	end;
+	//for I := 1 to ParamCount do
+    //WriteLn('Param ', I, ': ', ParamStr(I));
 end; // of procedure ProgramInit()
 
 
@@ -711,7 +759,7 @@ procedure ProgramRun();
 var
 	pathLog: string;
 begin
-	ProgramTitle();
+	//ProgramTitle();
 	
 	if ParamCount = 1 then
 	begin
@@ -734,7 +782,7 @@ begin
 			
 			// V07: Open a log file to write processed file and statistics
 			pathLog := LeftStr(GetProgramPath(), Length(GetProgramPath()) - 4) + '.log';
-			WriteLn('pathLog: ' + pathLog);
+			//WriteLn('pathLog: ' + pathLog);
 			
 			// Delete any existing Splunk file.
 			if FileExists(pathLog) = true then
