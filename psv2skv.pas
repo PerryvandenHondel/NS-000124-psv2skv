@@ -37,6 +37,7 @@
 		function GetKeyName
 		function GetKeyType
 		function ProcessThisEvent
+		procedure WriteDebug
 		procedure EventDetailReadConfig
 		procedure EventDetailRecordAdd
 		procedure EventDetailRecordShow
@@ -257,6 +258,14 @@ end; // of function GetKeyType
 	
 
 	
+procedure WriteDebug(t: string);
+begin
+	if blnDebug = true then
+		WriteLn('DEBUG: ' + t);
+end; // of procedure WriteDebug
+
+	
+	
 procedure EventFoundAdd(newEventId: integer);
 var
 	size: integer;
@@ -352,12 +361,15 @@ var
 	buffer: AnsiString;
 begin
 	//WriteLn;
+	//WriteDebug(IntToStr(eventId));
 	//WriteLn('ProcessEvent(): ', eventId, Chr(9));
 	buffer := la[0] + ' ' + GetEventType(StrToInt(la[5])) + ' eid=' + IntToStr(eventId) + ' ';
 	
 	for x := 0 to High(la) do
 	begin
+		// print per line!
 		//WriteLn(Chr(9), x, Chr(9), eventId, Chr(9), la[x]);
+		
 		strKeyName := GetKeyName(eventId, x);
 		if Length(strKeyName) > 0 then
 		begin
@@ -402,8 +414,8 @@ begin
 		
 		// Obtain the eventId from the lineArray on position 4.
 		eventId := StrToInt(lineArray[4]);	// The Event Id is always found at the 4th position
-		//Writeln(lineCount, Chr(9), l);
-		//WriteLn(Chr(9), eventId);
+		
+		WriteDebug(IntToStr(lineCount) + Chr(9) + l);
 		
 		if ProcessThisEvent(eventId) then
 			ProcessEvent(eventId, lineArray);
@@ -759,60 +771,50 @@ procedure ProgramRun();
 var
 	pathLog: string;
 begin
-	//ProgramTitle();
-	
-	if ParamCount = 1 then
+	pathInput := ParamStr(1);
+    
+	//WriteLn('Path input:  ' + pathInput);
+    
+	if FileExists(pathInput) = false then
 	begin
-		pathInput := ParamStr(1);
-    
-		//WriteLn('Path input:  ' + pathInput);
-    
-		if FileExists(pathInput) = false then
-		begin
-			programResult := RESULT_ERR_INPUT;
-			WriteLn('WARNING: File ' + pathInput + ' not found.');
-		end
-		else
-		begin
-			// Read all event definition files in the array.
-			ReadEventDefinitionFiles();
-			
-	 		//EventReadConfig();
-			EventRecordShow();
-			
-			// V07: Open a log file to write processed file and statistics
-			pathLog := LeftStr(GetProgramPath(), Length(GetProgramPath()) - 4) + '.log';
-			//WriteLn('pathLog: ' + pathLog);
-			
-			// Delete any existing Splunk file.
-			if FileExists(pathLog) = true then
-			begin
-				DeleteFile(pathLog);
-			end;
-			
-			tfLog := CTextFile.Create(pathLog);
-			tfLog.OpenFileWrite();
-			
-			tfLog.WriteToFile('Input: ' + pathInput);
-			tfLog.WriteToFile('');
-			
-			programResult := ConvertFile(pathInput);
-			if programResult <> 0 then
-			begin
-				programResult := RESULT_ERR_CONV;
-				WriteLn('WARNING: No conversion done.');
-			end;
-			
-			ShowStatistics();
-			
-			tfLog.CloseFile();
-		end
+		programResult := RESULT_ERR_INPUT;
+		WriteLn('WARNING: File ' + pathInput + ' not found.');
 	end
 	else
 	begin
-		ProgramUsage();
-		programResult := RESULT_OK;
-	end;
+		// Read all event definition files in the array.
+		ReadEventDefinitionFiles();
+		
+ 		//EventReadConfig();
+		EventRecordShow();
+		
+		// V07: Open a log file to write processed file and statistics
+		pathLog := LeftStr(GetProgramPath(), Length(GetProgramPath()) - 4) + '.log';
+		//WriteLn('pathLog: ' + pathLog);
+			
+		// Delete any existing Splunk file.
+		if FileExists(pathLog) = true then
+		begin
+			DeleteFile(pathLog);
+		end;
+			
+		tfLog := CTextFile.Create(pathLog);
+		tfLog.OpenFileWrite();
+			
+		tfLog.WriteToFile('Input: ' + pathInput);
+		tfLog.WriteToFile('');
+			
+		programResult := ConvertFile(pathInput);
+		if programResult <> 0 then
+		begin
+			programResult := RESULT_ERR_CONV;
+			WriteLn('WARNING: No conversion done.');
+		end;
+			
+		ShowStatistics();
+			
+		tfLog.CloseFile();
+	end
 end; // of procedure ProgramRun()
 
 
