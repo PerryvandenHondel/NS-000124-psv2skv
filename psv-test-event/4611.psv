@@ -1,0 +1,1 @@
+2015-03-23 09:30:54|NS00DC009|1822547857|Microsoft-Windows-Security-Auditing|4611|4|A trusted logon process has been registered with the Local Security Authority.|This logon process will be trusted to submit logon requests.|Subject|Security ID|S-1-5-18|Account Name|NS00DC009$|Account Domain|PROD|Logon ID|0x3e7|Logon Process Name|KSecDD
